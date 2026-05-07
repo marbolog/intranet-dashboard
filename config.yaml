@@ -6,10 +6,6 @@ hosts:
   - name: Raspberry Pi 5
     ip: 192.168.50.13
     services:
-      - name: CasaOS
-        url: http://192.168.50.13/
-        description: Home server management dashboard
-
       - name: PiGallery2
         url: http://192.168.50.13:3010/
         description: Self-hosted photo gallery
