@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Home Lab</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --accent:    #2563eb;
+      --bg:        #f1f5f9;
+      --surface:   #ffffff;
+      --border:    #e2e8f0;
+      --text:      #1e293b;
+      --muted:     #64748b;
+      --shadow:    0 1px 3px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.06);
+      --up:        #16a34a;
+      --down:      #dc2626;
+      --unknown:   #94a3b8;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    .header {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px;
+    }
+    .brand { font-weight: 700; font-size: 1.05rem; color: var(--accent); white-space: nowrap; }
+    .header-right { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .last-checked {
+      font-size: .78rem; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .btn-refresh {
+      /* min 44×38 px touch target */
+      padding: 9px 14px; border: 1px solid var(--border); border-radius: 6px;
+      background: var(--surface); font-size: .8rem; cursor: pointer;
+      font-family: inherit; color: var(--text);
+      transition: background .15s;
+      white-space: nowrap; flex-shrink: 0;
+      touch-action: manipulation;
+    }
+    .btn-refresh:hover { background: var(--bg); }
+    .btn-refresh.spinning { opacity: .5; pointer-events: none; }
+
+    /* Hide timestamp on very narrow phones — brand + button already fill the bar */
+    @media (max-width: 420px) {
+      .last-checked { display: none; }
+      .header { padding: 10px 12px; }
+    }
+
+    /* ── Main ── */
+    .main { padding: 20px 16px; max-width: 1200px; margin: 0 auto; }
+
+    @media (max-width: 480px) {
+      .main { padding: 14px 10px; }
+    }
+
+    /* ── Host section ── */
+    .host { margin-bottom: 28px; }
+    .host-label {
+      font-size: .7rem; font-weight: 700; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--muted);
+      margin-bottom: 10px;
+      display: flex; align-items: baseline; gap: 8px;
+    }
+    .host-ip {
+      font-size: .75rem; font-weight: 400; letter-spacing: 0;
+      text-transform: none; color: var(--unknown);
+      font-family: ui-monospace, monospace;
+    }
+
+    /* ── Cards ── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+    }
+
+    /* Force single column below 480 px so cards are comfortably wide on phones */
+    @media (max-width: 480px) {
+      .cards { grid-template-columns: 1fr; gap: 8px; }
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      box-shadow: var(--shadow);
+      display: flex; flex-direction: column; gap: 5px;
+    }
+
+    .card-top {
+      display: flex; align-items: center; gap: 7px;
+    }
+
+    .dot {
+      width: 9px; height: 9px; border-radius: 50%;
+      background: var(--unknown); flex-shrink: 0;
+      transition: background .3s;
+    }
+    .dot.up   { background: var(--up); }
+    .dot.down { background: var(--down); }
+
+    .card-name {
+      font-weight: 600; font-size: .9rem;
+      flex: 1; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    .card-latency {
+      font-size: .72rem; color: var(--muted);
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .card-latency.down { color: var(--down); }
+
+    .card-desc {
+      font-size: .8rem; color: var(--muted); line-height: 1.45;
+      flex: 1;
+    }
+
+    .card-open {
+      display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+      margin-top: 8px;
+      /* min 44 px tall touch target */
+      padding: 11px 14px;
+      background: var(--accent); color: #fff;
+      border-radius: 7px; text-decoration: none;
+      font-size: .85rem; font-weight: 500;
+      width: fit-content;
+      transition: opacity .15s;
+      touch-action: manipulation;
+    }
+    .card-open:hover { opacity: .85; }
+
+    /* Full-width button on phones — easier to tap */
+    @media (max-width: 480px) {
+      .card-open { width: 100%; }
+    }
+
+    /* ── Loading / error states ── */
+    .loading {
+      color: var(--muted); font-size: .9rem; padding: 40px 0;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <span class="brand" id="brand">Home Lab</span>
+  <div class="header-right">
+    <span class="last-checked" id="last-checked"></span>
+    <button class="btn-refresh" id="btn-refresh">↺ Refresh</button>
+  </div>
+</header>
+
+<main class="main" id="main">
+  <p class="loading">Loading…</p>
+</main>
+
+<script>
+  const mainEl   = document.getElementById('main');
+  const brandEl  = document.getElementById('brand');
+  const checkedEl = document.getElementById('last-checked');
+  const refreshBtn = document.getElementById('btn-refresh');
+
+  let hostsData = [];  // cached service list
+
+  function dotClass(s) {
+    if (!s) return '';
+    return s.status === 'up' ? 'up' : s.status === 'down' ? 'down' : '';
+  }
+
+  function latencyLabel(s) {
+    if (!s) return '';
+    if (s.status === 'up')   return s.latency_ms != null ? `${s.latency_ms}ms` : 'up';
+    if (s.status === 'down') return 'down';
+    return '';
+  }
+
+  function renderHosts(hosts, status) {
+    mainEl.innerHTML = '';
+    for (const host of hosts) {
+      const section = document.createElement('section');
+      section.className = 'host';
+      section.innerHTML = `
+        <div class="host-label">
+          ${host.name}
+          <span class="host-ip">${host.ip || ''}</span>
+        </div>
+        <div class="cards" id="cards-${host.ip}"></div>
+      `;
+      mainEl.appendChild(section);
+
+      const cardsEl = section.querySelector('.cards');
+      for (const svc of (host.services || [])) {
+        const s = status[svc.id] || {};
+        const dc = dotClass(s);
+        const ll = latencyLabel(s);
+        const openHtml = svc.url
+          ? `<a class="card-open" href="${svc.url}" target="_blank" rel="noopener">Open ↗</a>`
+          : '';
+
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.dataset.id = svc.id;
+        card.innerHTML = `
+          <div class="card-top">
+            <span class="dot ${dc}"></span>
+            <span class="card-name">${svc.name}</span>
+            <span class="card-latency ${s.status === 'down' ? 'down' : ''}">${ll}</span>
+          </div>
+          <div class="card-desc">${svc.description || ''}</div>
+          ${openHtml}
+        `;
+        cardsEl.appendChild(card);
+      }
+    }
+  }
+
+  function applyStatus(status) {
+    for (const [id, s] of Object.entries(status)) {
+      const card = mainEl.querySelector(`[data-id="${id}"]`);
+      if (!card) continue;
+      const dot = card.querySelector('.dot');
+      const latEl = card.querySelector('.card-latency');
+      dot.className = `dot ${dotClass(s)}`;
+      latEl.textContent = latencyLabel(s);
+      latEl.className = `card-latency${s.status === 'down' ? ' down' : ''}`;
+    }
+  }
+
+  async function loadAll() {
+    const [cfgRes, stRes] = await Promise.all([
+      fetch('/api/services'),
+      fetch('/api/status'),
+    ]);
+    const cfg    = await cfgRes.json();
+    const status = await stRes.json();
+
+    document.title = cfg.title || 'Home Lab';
+    brandEl.textContent = cfg.title || 'Home Lab';
+    hostsData = cfg.hosts || [];
+
+    renderHosts(hostsData, status);
+    checkedEl.textContent = `Last checked ${new Date().toLocaleTimeString()}`;
+  }
+
+  async function refreshStatus() {
+    if (!hostsData.length) { await loadAll(); return; }
+    const res    = await fetch('/api/status');
+    const status = await res.json();
+    applyStatus(status);
+    checkedEl.textContent = `Last checked ${new Date().toLocaleTimeString()}`;
+  }
+
+  async function refresh() {
+    refreshBtn.classList.add('spinning');
+    try { await refreshStatus(); }
+    finally { refreshBtn.classList.remove('spinning'); }
+  }
+
+  refreshBtn.addEventListener('click', refresh);
+
+  // Initial load
+  loadAll().catch(err => {
+    mainEl.innerHTML = `<p class="loading">Failed to load: ${err.message}</p>`;
+  });
+
+  // Auto-refresh status every 30 s
+  setInterval(refreshStatus, 30_000);
+</script>
+</body>
+</html>

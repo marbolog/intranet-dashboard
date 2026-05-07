@@ -1,0 +1,65 @@
+dashboard:
+  title: Home Lab
+  port: 8888
+
+hosts:
+  - name: Raspberry Pi 5
+    ip: 192.168.50.13
+    services:
+      - name: CasaOS
+        url: http://192.168.50.13/
+        description: Home server management dashboard
+
+      - name: PiGallery2
+        url: http://192.168.50.13:3010/
+        description: Self-hosted photo gallery
+
+      - name: qBittorrent
+        url: http://192.168.50.13:8080/
+        description: BitTorrent client web UI
+
+      - name: TG Downloader
+        url: http://192.168.50.13:8090/
+        description: Telegram channel media downloader and file browser
+
+      - name: Jellyfin
+        url: http://192.168.50.13:8096/
+        description: Media server — movies, TV shows, music
+
+      - name: RSS Media Review
+        url: http://192.168.50.13:8765/
+        description: Keep/discard review UI for RSS feed downloads
+
+      - name: TG Listener
+        description: Background Telegram media download listener (Docker)
+        docker_container: tg-downloader
+
+      - name: RSS Feed Reader
+        description: Hourly RSS feed poller (cron job — no persistent process)
+
+      - name: Power Monitor
+        description: Power outage and under-voltage notifier
+        systemd_unit: power-monitor.service
+
+      - name: Rclone
+        description: Cloud storage sync daemon
+        systemd_unit: rclone.service
+
+      - name: Reverse Tunnel
+        description: SSH reverse tunnel to relay VPS
+        systemd_unit: reverse-tunnel.service
+
+  - name: Zimaboard 2
+    ip: 192.168.50.12
+    services:
+      - name: ZimaOS
+        url: http://192.168.50.12/
+        description: Home server OS and app store
+
+      - name: ttyd
+        url: http://192.168.50.12:7681/
+        description: Web-based terminal
+
+      - name: MiniDLNA
+        url: http://192.168.50.12:8200/
+        description: DLNA media server
