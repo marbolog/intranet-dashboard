@@ -45,6 +45,21 @@ hosts:
         description: SSH reverse tunnel to relay VPS
         systemd_unit: reverse-tunnel.service
 
+  - name: Torrent Stack
+    ip: 192.168.50.13
+    services:
+      - name: Prowlarr
+        url: http://192.168.50.13:9696/
+        description: Indexer manager — aggregates torrent and Usenet sources
+
+      - name: autobrr
+        url: http://192.168.50.13:7474/
+        description: Automated torrent downloader — filter rules and IRC announce
+
+      - name: Transmission
+        url: http://192.168.50.13:9091/transmission/web/
+        description: BitTorrent client web UI
+
   - name: Zimaboard 2
     ip: 192.168.50.12
     services:

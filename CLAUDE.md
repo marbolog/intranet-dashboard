@@ -42,6 +42,15 @@ Edit `config.yaml` and restart the service. Each service entry supports:
 
 Health check priority: `url` > `docker_container` > `systemd_unit`.
 
+### Service groups (hosts in config.yaml)
+`config.yaml` uses host entries as visual sections in the dashboard. Multiple entries can share the same IP to create logical groupings — e.g. **Torrent Stack** is a separate host entry for `192.168.50.13` that groups Prowlarr, autobrr, and Transmission together.
+
+| Host entry | IP | Purpose |
+|---|---|---|
+| Raspberry Pi 5 | 192.168.50.13 | General services |
+| Torrent Stack | 192.168.50.13 | Prowlarr (9696), autobrr (7474), Transmission (9091) |
+| Zimaboard 2 | 192.168.50.12 | ZimaOS, ttyd, MiniDLNA |
+
 ### Known issue: Docker health checks
 `marcello` is not in the docker group, so `docker inspect` fails without sudo.
 Services using `docker_container` (currently `tg-listener`) show `unknown`.
