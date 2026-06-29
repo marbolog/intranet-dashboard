@@ -47,19 +47,24 @@ Health check priority: `url` > `docker_container` > `systemd_unit`.
 
 | Host entry | IP | Purpose |
 |---|---|---|
-| Raspberry Pi 5 | 192.168.50.13 | General services |
+| Raspberry Pi 5 | 192.168.50.13 | General services + background daemons (Ollama, Samba, Tailscale, power monitor, reverse tunnel) + nginx static file server (port 80) |
 | Torrent Stack | 192.168.50.13 | Prowlarr (9696), autobrr (7474), Transmission (9091) |
+| Magnetize Stack | 192.168.50.13 | bitmagnet (3333 web / 3334 DHT), Jackett (9118), FlareSolverr, Postgres — Docker compose stack at `~/devel-with-grok/mgzns-downloader` |
 | Zimaboard 2 | 192.168.50.12 | ZimaOS, ttyd, MiniDLNA |
 
-### Known issue: Docker health checks
-`marcello` is not in the docker group, so `docker inspect` fails without sudo.
-Services using `docker_container` (currently `tg-listener`) show `unknown`.
+**Ollama** runs locally (`127.0.0.1:11434`, models `mistral:7b` + `phi3:mini`); it is bound to localhost so it has no `url` (no Open button) and is health-checked via `systemd_unit`.
 
-Fix:
-```bash
-sudo usermod -aG docker marcello
-# then log out and back in (or: newgrp docker)
-```
+**Static file server (nginx):** nginx serves `/srv/www` on port 80 (`http://192.168.50.13/`).
+Drop files into `/srv/www` (owned by `marcello`, writable without sudo); folders without an
+`index.html` get an automatic directory listing (`autoindex on`). Site config lives at
+`/etc/nginx/sites-available/static-files`; the stock `default` site is disabled. Reload after
+config changes with `sudo nginx -t && sudo systemctl reload nginx`.
+
+### Docker health checks (resolved)
+`marcello` is now in the `docker` group (gid 991), so `docker inspect` works without
+sudo and all `docker_container` checks (`tg-downloader`, `mgzns-flaresolverr`,
+`mgzns-bitmagnet-postgres`) report correctly. The previous `usermod -aG docker marcello`
+fix has been applied — no action needed.
 
 
 
