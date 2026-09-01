@@ -2,14 +2,20 @@
 
 ## Project: intranet-dashboard
 
-Web dashboard showing all home lab services on Raspberry Pi (192.168.50.13) and Zimaboard (192.168.50.12), with live health checks and links to open web apps.
+Web dashboard showing all home lab services on Raspberry Pi (192.168.50.13) and Zimaboard (192.168.50.12), with health checks, per-service uptime history, and links to open web apps.
+
+> **Removed 2026-09-01** (unused — see `docs/superpowers/specs/2026-09-01-revamp-design.md`):
+> Ollama, Transmission, autobrr, Prowlarr, Samba, and the Magnetize Stack
+> (bitmagnet + Postgres + Jackett + FlareSolverr). ~33 GB / ~1.5 GB RAM reclaimed.
 
 ### Stack
 - **Python 3.11**, managed by **uv**
-- **Flask** — serves the single-page UI and health-check API
+- **Flask** — serves the single-page UI and the status API
 - **requests** — HTTP health checks for web services
 - **PyYAML** — service config
-- Vanilla JS (no build step) — auto-refreshes status every 30 s
+- **SQLite** (stdlib `sqlite3`) — status-history store (`dashboard.db`), sampled every 60 s
+- **pytest** (dev group) — `uv run pytest`
+- Vanilla JS (no build step) — polls `/api/status` every 30 s, draws inline-SVG sparklines
 
 ### Running
 ```bash
@@ -27,9 +33,15 @@ Dashboard is at: **http://192.168.50.13:8888**
 ### Files
 | File | Purpose |
 |---|---|
-| `app.py` | Flask app — serves `/`, `/api/services`, `/api/status` |
-| `config.yaml` | Service definitions (hosts, names, URLs, check types) |
-| `static/index.html` | Single-page dashboard (vanilla JS) |
+| `app.py` | Flask app — serves `/`, `/api/services`, `/api/status`; boots the DB + sampler |
+| `config.py` | Loads `config.yaml`; computes `service_id`; `iter_services()` |
+| `checks.py` | Health checks: `check_http` / `check_systemd` / `check_docker` / `check_file_fresh` |
+| `store.py` | SQLite: schema, `record()`, `prune()`, `status_summary()` (uptime %, sparkline) |
+| `sampler.py` | Daemon thread — samples every service every `sample_interval_seconds`, prunes hourly |
+| `config.yaml` | Service definitions + `sample_interval_seconds` / `history_retention_days` |
+| `static/index.html` | Single-page dashboard (vanilla JS, inline-SVG sparklines) |
+| `dashboard.db` | Status-history SQLite DB (gitignored, created on first run) |
+| `tests/` | pytest suite (`uv run pytest`) |
 | `systemd/intranet-dashboard.service` | Systemd unit (runs as user marcello) |
 
 ### Adding / editing services
@@ -37,22 +49,22 @@ Edit `config.yaml` and restart the service. Each service entry supports:
 - `name` — display name (required)
 - `description` — shown in card (optional)
 - `url` — web URL; enables the Open button and HTTP health check
-- `systemd_unit` — check via `systemctl is-active` (background services with no URL)
+- `systemd_unit` — check via `systemctl show` (`ActiveState=active`); background services with no URL
 - `docker_container` — check via `docker inspect` (background Docker services)
+- `file_fresh` — `{path, max_age_minutes}`; up if the file was modified within the window (cron jobs)
 
-Health check priority: `url` > `docker_container` > `systemd_unit`.
+Health check priority: `url` > `docker_container` > `systemd_unit` > `file_fresh`.
+
+HTTP checks count `<400` and `401`/`403` (auth wall) as up; everything else is down. One retry on transport failure.
 
 ### Service groups (hosts in config.yaml)
-`config.yaml` uses host entries as visual sections in the dashboard. Multiple entries can share the same IP to create logical groupings — e.g. **Torrent Stack** is a separate host entry for `192.168.50.13` that groups Prowlarr, autobrr, and Transmission together.
+`config.yaml` uses host entries as visual sections in the dashboard. Multiple entries can share the same IP to create logical groupings — e.g. **Raspberry Pi 5 — Background** is a separate host entry for `192.168.50.13` that groups the daemons.
 
 | Host entry | IP | Purpose |
 |---|---|---|
-| Raspberry Pi 5 | 192.168.50.13 | General services + background daemons (Ollama, Samba, Tailscale, power monitor, reverse tunnel) + nginx static file server (port 80) |
-| Torrent Stack | 192.168.50.13 | Prowlarr (9696), autobrr (7474), Transmission (9091) |
-| Magnetize Stack | 192.168.50.13 | bitmagnet (3333 web / 3334 DHT), Jackett (9118), FlareSolverr, Postgres — Docker compose stack at `~/devel-with-grok/mgzns-downloader` |
+| Raspberry Pi 5 | 192.168.50.13 | Web apps: PiGallery2, qBittorrent, TG Downloader, Jellyfin, RSS Media Review, Static Files |
+| Raspberry Pi 5 — Background | 192.168.50.13 | Daemons: TG Listener (Docker), RSS Feed Reader (cron/`file_fresh`), Power Monitor, Reverse Tunnel, Tailscale |
 | Zimaboard 2 | 192.168.50.12 | ZimaOS, ttyd, MiniDLNA |
-
-**Ollama** runs locally (`127.0.0.1:11434`, models `mistral:7b` + `phi3:mini`); it is bound to localhost so it has no `url` (no Open button) and is health-checked via `systemd_unit`.
 
 **Static file server (nginx):** nginx serves `/srv/www` on port 80 (`http://192.168.50.13/`).
 Drop files into `/srv/www` (owned by `marcello`, writable without sudo); folders without an
@@ -60,11 +72,21 @@ Drop files into `/srv/www` (owned by `marcello`, writable without sudo); folders
 `/etc/nginx/sites-available/static-files`; the stock `default` site is disabled. Reload after
 config changes with `sudo nginx -t && sudo systemctl reload nginx`.
 
-### Docker health checks (resolved)
-`marcello` is now in the `docker` group (gid 991), so `docker inspect` works without
-sudo and all `docker_container` checks (`tg-downloader`, `mgzns-flaresolverr`,
-`mgzns-bitmagnet-postgres`) report correctly. The previous `usermod -aG docker marcello`
-fix has been applied — no action needed.
+### Status history
+`sampler.py` runs as a daemon thread inside the Flask process. Every
+`sample_interval_seconds` (default 60) it checks every service and writes one
+row per service to `dashboard.db` (`samples` table, WAL mode). Once an hour it
+deletes rows older than `history_retention_days` (default 30).
+
+`/api/status` never runs a live check — it returns the latest stored sample per
+service plus derived figures: `uptime_24h`, `uptime_7d`, `last_seen_ts`, and a
+24-bucket hourly `sparkline` (oldest first). The UI polls it every 30 s.
+
+To reset history: stop the service, `rm dashboard.db*`, start it again.
+
+### Docker health checks
+`marcello` is in the `docker` group (gid 991), so `docker inspect` works without
+sudo. The only `docker_container` check now is `tg-downloader` (TG Listener).
 
 
 
