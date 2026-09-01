@@ -1,8 +1,13 @@
 # UI Redesign — Design Spec
 
+> **SUPERSEDED (2026-09-01)** — this sidebar layout was approved but never
+> implemented. The revamp in `2026-09-01-revamp-design.md` keeps this document's
+> visual language (status colours, left-border cards, latency) but drops the
+> sidebar and host-switching in favour of a single scrolling page.
+
 **Date:** 2026-05-07
 **Project:** intranet-dashboard
-**Status:** Approved
+**Status:** Superseded by `2026-09-01-revamp-design.md`
 
 ## Overview
 

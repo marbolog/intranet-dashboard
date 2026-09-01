@@ -1,6 +1,8 @@
 dashboard:
   title: Home Lab
   port: 8888
+  sample_interval_seconds: 60
+  history_retention_days: 30
 
 hosts:
   - name: Raspberry Pi 5
@@ -30,66 +32,30 @@ hosts:
         url: http://192.168.50.13/
         description: nginx static file server — serves /srv/www (autoindex on)
 
+  - name: Raspberry Pi 5 — Background
+    ip: 192.168.50.13
+    services:
       - name: TG Listener
         description: Background Telegram media download listener (Docker)
         docker_container: tg-downloader
 
       - name: RSS Feed Reader
-        description: Hourly RSS feed poller (cron job — no persistent process)
+        description: RSS feed poller (cron, every 2 h)
+        file_fresh:
+          path: /home/marcello/devel-with-claude/rss-feed-reader/cron.log
+          max_age_minutes: 150
 
       - name: Power Monitor
         description: Power outage and under-voltage notifier
         systemd_unit: power-monitor.service
 
       - name: Reverse Tunnel
-        description: SSH reverse tunnel to relay VPS
+        description: SSH reverse tunnel to relay VPS (remote access path)
         systemd_unit: reverse-tunnel.service
-
-      - name: Ollama
-        description: Local LLM inference server (mistral:7b, phi3:mini) — bound to 127.0.0.1:11434
-        systemd_unit: ollama.service
-
-      - name: Samba File Share
-        description: SMB/CIFS network file sharing (ports 445/139)
-        systemd_unit: smbd.service
 
       - name: Tailscale
         description: WireGuard mesh VPN node agent
         systemd_unit: tailscaled.service
-
-  - name: Torrent Stack
-    ip: 192.168.50.13
-    services:
-      - name: Prowlarr
-        url: http://192.168.50.13:9696/
-        description: Indexer manager — aggregates torrent and Usenet sources
-
-      - name: autobrr
-        url: http://192.168.50.13:7474/
-        description: Automated torrent downloader — filter rules and IRC announce
-
-      - name: Transmission
-        url: http://192.168.50.13:9091/transmission/web/
-        description: BitTorrent client web UI
-
-  - name: Magnetize Stack
-    ip: 192.168.50.13
-    services:
-      - name: bitmagnet
-        url: http://192.168.50.13:3333/
-        description: Self-hosted DHT torrent indexer and search (crawls the BitTorrent DHT)
-
-      - name: Jackett
-        url: http://192.168.50.13:9118/
-        description: Torrent indexer proxy (Torznab/Cardigann) feeding the stack
-
-      - name: FlareSolverr
-        description: Cloudflare challenge solver proxy for indexers (Docker, no UI)
-        docker_container: mgzns-flaresolverr
-
-      - name: bitmagnet Postgres
-        description: PostgreSQL backend for bitmagnet (Docker, internal)
-        docker_container: mgzns-bitmagnet-postgres
 
   - name: Zimaboard 2
     ip: 192.168.50.12

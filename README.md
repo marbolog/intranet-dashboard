@@ -1,16 +1,21 @@
 # intranet-dashboard
 
-A lightweight home lab dashboard that lists every service running on your local machines, shows live health status, and gives you one-click access to each web UI.
+A lightweight home lab dashboard that lists every service running on your local machines, shows current health status with per-service uptime history, and gives you one-click access to each web UI.
 
 ## How it works
 
-The dashboard reads a `config.yaml` file that describes your hosts and services. On each page load (and every 30 seconds automatically) it probes each service and reports whether it is reachable:
+The dashboard reads a `config.yaml` file that describes your hosts and services. A
+background thread samples every service on a fixed interval (default 60 s) and stores
+the result in a local SQLite database (`dashboard.db`). The page reads the stored
+samples — it never triggers a live check on load — and shows, per service, current
+status, a 24-hour uptime sparkline, and an uptime percentage.
 
-- **Web services** — an HTTP GET to the service URL; up if the response is < 500.
-- **Systemd services** — `systemctl is-active <unit>` run locally.
-- **Docker containers** — `docker inspect` checked locally.
+- **Web services** — HTTP GET; up if the response is `< 400` or an auth wall (401/403).
+- **Systemd services** — `systemctl show` locally (`ActiveState=active`).
+- **Docker containers** — `docker inspect` locally.
+- **Cron jobs** — `file_fresh`: up if a named file changed within `max_age_minutes`.
 
-Services with no probe configured (e.g. cron jobs) show as *unknown*.
+Services with no probe configured show as *unknown*.
 
 ## Requirements
 
@@ -26,11 +31,7 @@ uv sync
 
 ### 2. Configure
 
-```bash
-cp config.yaml.example config.yaml   # or edit config.yaml directly
-```
-
-Edit `config.yaml` to describe your hosts and services (see [Configuration](#configuration) below).
+Edit `config.yaml` directly to describe your hosts and services (see [Configuration](#configuration) below).
 
 ### 3. Run
 
@@ -56,8 +57,10 @@ The unit runs as the `marcello` user. Edit the `User=` and `WorkingDirectory=` l
 
 ```yaml
 dashboard:
-  title: Home Lab      # page title and header text
-  port: 8888           # port to listen on
+  title: Home Lab             # page title and header text
+  port: 8888                  # port to listen on
+  sample_interval_seconds: 60 # how often the background sampler checks every service
+  history_retention_days: 30  # how long samples are kept in dashboard.db
 
 hosts:
   - name: My Server
@@ -78,6 +81,13 @@ hosts:
         description: Background task processor
         docker_container: my-worker
 
+      # Cron job — up if the log file changed recently
+      - name: Nightly Backup
+        description: Runs at 03:00 via cron
+        file_fresh:
+          path: /var/log/backup.log
+          max_age_minutes: 1500
+
       # No check — always shown as unknown
       - name: Cron Job
         description: Runs every hour via cron
@@ -85,22 +95,29 @@ hosts:
 
 ### Health check priority
 
-If a service has a `url`, that is always used for the health check (HTTP). `docker_container` and `systemd_unit` are only used when there is no `url` — typically for background services with no web interface.
+The first key present wins: `url` > `docker_container` > `systemd_unit` > `file_fresh`.
+`docker_container` / `systemd_unit` / `file_fresh` only work on the machine running the
+dashboard; remote hosts support HTTP checks only.
 
 | Key | Type | Effect |
 |---|---|---|
-| `url` | string | Enables the Open button; HTTP health check |
-| `systemd_unit` | string | `systemctl is-active` check (local host only) |
+| `url` | string | Enables the Open button; HTTP check — up if `<400` or `401`/`403` |
 | `docker_container` | string | `docker inspect` check (local host only) |
-
-Remote hosts (not the machine running the dashboard) support only HTTP checks.
+| `systemd_unit` | string | `systemctl show` → `ActiveState=active` (local host only) |
+| `file_fresh` | mapping | `{path, max_age_minutes}` — up if the file's mtime is within the window |
 
 ## File layout
 
 ```
-app.py                          Flask app — serves / and /api/*
-config.yaml                     Service definitions
-static/index.html               Single-page dashboard UI
+app.py                              Flask routes; boots the DB + sampler
+config.py                           Config loading + service IDs
+checks.py                           Health-check functions
+store.py                            SQLite: samples table, aggregate queries
+sampler.py                          Background sampling thread
+config.yaml                         Service definitions
+dashboard.db                        Status-history SQLite DB (created on first run)
+static/index.html                   Single-page dashboard UI
+tests/                              pytest suite
 systemd/intranet-dashboard.service  Systemd unit template
 ```
 
@@ -109,5 +126,5 @@ systemd/intranet-dashboard.service  Systemd unit template
 | Endpoint | Description |
 |---|---|
 | `GET /` | Dashboard HTML |
-| `GET /api/services` | Full service list from config (includes computed IDs) |
-| `GET /api/status` | Health check results keyed by service ID |
+| `GET /api/services` | Service list from config (computed IDs + `sample_interval_seconds`) |
+| `GET /api/status` | Latest stored sample per service plus uptime % and 24h sparkline |

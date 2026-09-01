@@ -3,3 +3,6 @@ __pycache__/
 *.egg-info/
 *.pyc
 .superpowers/
+dashboard.db
+dashboard.db-wal
+dashboard.db-shm
